@@ -1,13 +1,15 @@
-import pandas as pd
+import argparse
 from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
-import joblib
-import numpy as np
 
 DATA_PATH = Path(__file__).resolve().parent.parent / 'data' / 'complete_ufc_data.csv'
 MODEL_DIR = Path(__file__).resolve().parent
@@ -41,7 +43,16 @@ def load_dataset() -> pd.DataFrame:
     )
     return df
 
-def build_pipeline(categorical_features, numeric_features):
+def build_pipeline(
+    categorical_features,
+    numeric_features,
+    *,
+    n_estimators: int = 50,
+    max_depth: int = 10,
+    min_samples_split: int = 2,
+    min_samples_leaf: int = 1,
+    random_state: int = 42,
+):
     return Pipeline(
         steps=[
             (
@@ -53,7 +64,13 @@ def build_pipeline(categorical_features, numeric_features):
                             Pipeline(
                                 steps=[
                                     ('imputer', SimpleImputer(strategy='most_frequent')),
-                                    ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)),
+                                    (
+                                        'encoder',
+                                        OrdinalEncoder(
+                                            handle_unknown='use_encoded_value',
+                                            unknown_value=-1,
+                                        ),
+                                    ),
                                 ]
                             ),
                             categorical_features,
@@ -68,11 +85,28 @@ def build_pipeline(categorical_features, numeric_features):
                     ]
                 ),
             ),
-            ('model', RandomForestClassifier(n_estimators=50, max_depth=10, random_state=42)),
+            (
+                'model',
+                RandomForestClassifier(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    random_state=random_state,
+                ),
+            ),
         ]
     )
 
-def train_and_save(target: str) -> None:
+def train_and_save(
+    target: str,
+    *,
+    n_estimators: int,
+    max_depth: int,
+    min_samples_split: int,
+    min_samples_leaf: int,
+    random_state: int,
+) -> None:
     df = load_dataset()
     df = df.dropna(subset=[target])
     feature_columns = [c for c in df.columns if c not in TARGET_COLUMNS]
@@ -92,18 +126,65 @@ def train_and_save(target: str) -> None:
         X, y, test_size=0.2, random_state=42, stratify=stratify
     )
 
-    pipeline = build_pipeline(categorical_features, numeric_features)
+    pipeline = build_pipeline(
+        categorical_features,
+        numeric_features,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,
+        min_samples_leaf=min_samples_leaf,
+        random_state=random_state,
+    )
     pipeline.fit(X_train, y_train)
-    score = pipeline.score(X_test, y_test)
-    print(f'{target} accuracy: {score:.3f}')
+    train_score = pipeline.score(X_train, y_train)
+    test_score = pipeline.score(X_test, y_test)
+    print(
+        f"{target} train accuracy: {train_score:.3f}, test accuracy: {test_score:.3f}"
+    )
 
     MODEL_DIR.mkdir(exist_ok=True)
     model_path = MODEL_DIR / f'{target}_random_forest.joblib'
     joblib.dump(pipeline, model_path)
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Train Random Forest models for multiple UFC prediction targets"
+    )
+    parser.add_argument(
+        "--n-estimators", type=int, default=50, help="Number of trees in the forest"
+    )
+    parser.add_argument(
+        "--max-depth", type=int, default=10, help="Maximum depth of the trees"
+    )
+    parser.add_argument(
+        "--min-samples-split",
+        type=int,
+        default=2,
+        help="Minimum number of samples required to split an internal node",
+    )
+    parser.add_argument(
+        "--min-samples-leaf",
+        type=int,
+        default=1,
+        help="Minimum number of samples required to be at a leaf node",
+    )
+    parser.add_argument(
+        "--random-state", type=int, default=42, help="Random seed for reproducibility"
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     for target in TARGET_COLUMNS:
-        train_and_save(target)
+        train_and_save(
+            target,
+            n_estimators=args.n_estimators,
+            max_depth=args.max_depth,
+            min_samples_split=args.min_samples_split,
+            min_samples_leaf=args.min_samples_leaf,
+            random_state=args.random_state,
+        )
 
 if __name__ == '__main__':
     main()
