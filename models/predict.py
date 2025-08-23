@@ -3,9 +3,12 @@
 This script requires only the fighter names and the event date. All other
 statistics are looked up from the historical dataset so the user does not need
 to supply feature values manually.
+
+Run with ``--changes`` to view a changelog of modifications made in this fork.
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import joblib
@@ -62,25 +65,40 @@ def build_features(fighter1: str, fighter2: str, event_date: str) -> dict:
     row = row.drop(columns=TARGET_COLUMNS)
     return row.squeeze().to_dict()
 
-
 def main() -> None:
+    changes_only = "--changes" in sys.argv
     parser = argparse.ArgumentParser(
-        description="Predict UFC fight outcomes using a trained Random Forest model."
+        description="Predict UFC fight outcomes using a trained Random Forest model.",
+        epilog="Use --changes to see fork-specific modifications.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--model",
         type=Path,
-        required=True,
+        required=not changes_only,
         help="Path to the saved model (.joblib file).",
     )
-    parser.add_argument("--fighter1", required=True, help="Name of the first fighter.")
-    parser.add_argument("--fighter2", required=True, help="Name of the second fighter.")
+    parser.add_argument("--fighter1", required=not changes_only, help="Name of the first fighter.")
+    parser.add_argument("--fighter2", required=not changes_only, help="Name of the second fighter.")
     parser.add_argument(
         "--event-date",
-        required=True,
+        required=not changes_only,
         help="Fight date in YYYY-MM-DD format",
     )
+    parser.add_argument(
+        "--changes",
+        action="store_true",
+        help="Show changelog for this fork and exit.",
+    )
     args = parser.parse_args()
+
+    if args.changes:
+        changelog_path = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+        if changelog_path.exists():
+            print(changelog_path.read_text())
+        else:
+            print("No changelog available.")
+        return
 
     pipeline = joblib.load(args.model)
     features = build_features(args.fighter1, args.fighter2, args.event_date)
