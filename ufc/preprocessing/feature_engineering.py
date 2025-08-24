@@ -11,7 +11,57 @@ import numpy as np
 
 from ufc import constants
 
-def derive_features(df) -> pd.DataFrame:
+
+def randomize_fighter_order(df: pd.DataFrame, random_state: int | None = None) -> pd.DataFrame:
+    """Randomly switch fighter1 and fighter2 related columns.
+
+    This helps prevent models from learning that ``fighter1`` tends to be the
+    winner simply because of ordering in the dataset. For a random half of the
+    rows the fighters, their statistics and odds information are swapped and the
+    outcome columns updated accordingly.
+    """
+
+    df = df.copy()
+    rng = np.random.default_rng(random_state)
+    swap_mask = rng.random(len(df)) < 0.5
+
+    if not swap_mask.any():
+        return df
+
+    # swap fighter names
+    df.loc[swap_mask, ["fighter1", "fighter2"]] = df.loc[swap_mask, ["fighter2", "fighter1"]].values
+
+    # swap fighter stats
+    fighter1_cols = [c for c in df.columns if c.startswith("fighter1_")]
+    fighter2_cols = [c for c in df.columns if c.startswith("fighter2_")]
+    for c1, c2 in zip(fighter1_cols, fighter2_cols):
+        df.loc[swap_mask, [c1, c2]] = df.loc[swap_mask, [c2, c1]].values
+
+    # swap betting odds information
+    df.loc[swap_mask, ["favourite", "underdog"]] = df.loc[swap_mask, ["underdog", "favourite"]].values
+    df.loc[swap_mask, ["favourite_odds", "underdog_odds"]] = df.loc[swap_mask, ["underdog_odds", "favourite_odds"]].values
+
+    # update winner and betting outcome columns
+    def _swap_outcome(x: str) -> str:
+        return "fighter2" if x == "fighter1" else ("fighter1" if x == "fighter2" else x)
+
+    def _swap_bet_outcome(x: str) -> str:
+        return "underdog" if x == "favourite" else ("favourite" if x == "underdog" else x)
+
+    df.loc[swap_mask, "outcome"] = df.loc[swap_mask, "outcome"].apply(_swap_outcome)
+    df.loc[swap_mask, "betting_outcome"] = df.loc[swap_mask, "betting_outcome"].apply(_swap_bet_outcome)
+
+    return df
+
+
+def derive_features(
+    df: pd.DataFrame,
+    randomise_fighters: bool = True,
+    random_state: int | None = None,
+) -> pd.DataFrame:
+
+    if randomise_fighters:
+        df = randomize_fighter_order(df, random_state=random_state)
 
     df["fighter1_age"] = df["event_date"].dt.year - df["fighter1_dob"].dt.year
     df["fighter2_age"] = df["event_date"].dt.year - df["fighter2_dob"].dt.year
