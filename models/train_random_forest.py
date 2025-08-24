@@ -15,14 +15,27 @@ DATA_PATH = Path(__file__).resolve().parent.parent / 'data' / 'complete_ufc_data
 MODEL_DIR = Path(__file__).resolve().parent
 TARGET_COLUMNS = ['betting_outcome', 'outcome', 'method', 'round']
 
-def load_dataset() -> pd.DataFrame:
+
+def load_dataset(
+    *,
+    apply_feature_engineering: bool = False,
+    random_state: int | None = None,
+) -> pd.DataFrame:
     df = pd.read_csv(
         DATA_PATH,
         parse_dates=['event_date', 'fighter1_dob', 'fighter2_dob'],
     )
-    # Compute age of each fighter at the time of the event
-    df['fighter1_age'] = (df['event_date'] - df['fighter1_dob']).dt.days / 365.25
-    df['fighter2_age'] = (df['event_date'] - df['fighter2_dob']).dt.days / 365.25
+
+    if apply_feature_engineering:
+        from ufc.preprocessing.feature_engineering import derive_features
+
+        # operate on a copy so the original data remains intact
+        df = derive_features(df.copy(), random_state=random_state)
+    else:
+        # Compute age of each fighter at the time of the event
+        df['fighter1_age'] = (df['event_date'] - df['fighter1_dob']).dt.days / 365.25
+        df['fighter2_age'] = (df['event_date'] - df['fighter2_dob']).dt.days / 365.25
+
     # Convert event_date to ordinal for numerical processing
     df['event_date'] = df['event_date'].map(pd.Timestamp.toordinal)
     # Replace infinite values which can appear in the odds columns
@@ -106,8 +119,12 @@ def train_and_save(
     min_samples_split: int,
     min_samples_leaf: int,
     random_state: int,
+    apply_feature_engineering: bool,
 ) -> None:
-    df = load_dataset()
+    df = load_dataset(
+        apply_feature_engineering=apply_feature_engineering,
+        random_state=random_state,
+    )
     df = df.dropna(subset=[target])
     feature_columns = [c for c in df.columns if c not in TARGET_COLUMNS]
     categorical_features = [
@@ -171,6 +188,11 @@ def parse_args():
     parser.add_argument(
         "--random-state", type=int, default=42, help="Random seed for reproducibility"
     )
+    parser.add_argument(
+        "--feature-engineering",
+        action="store_true",
+        help="Apply additional feature engineering during training",
+    )
     return parser.parse_args()
 
 
@@ -184,6 +206,7 @@ def main():
             min_samples_split=args.min_samples_split,
             min_samples_leaf=args.min_samples_leaf,
             random_state=args.random_state,
+            apply_feature_engineering=args.feature_engineering,
         )
 
 if __name__ == '__main__':
