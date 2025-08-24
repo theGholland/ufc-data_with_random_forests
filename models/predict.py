@@ -1,8 +1,10 @@
 """Predict UFC fight outcomes using a trained Random Forest model.
 
-This script requires only the fighter names and the event date. All other
-statistics are looked up from the historical dataset so the user does not need
-to supply feature values manually.
+The original script looked up a pre-computed row in the historical dataset for
+the exact fight and date. This limited predictions to bouts that had already
+taken place.  The updated version infers each fighter's statistics based on
+their most recent fight *before* the requested event date, allowing predictions
+for hypothetical or upcoming matchups.
 
 Run with ``--changes`` to view a changelog of modifications made in this fork.
 """
@@ -18,52 +20,78 @@ import pandas as pd
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "complete_ufc_data.csv"
 
-# Columns that are not used as features for the model
+# Columns present in the dataset that are not model features
 TARGET_COLUMNS = ["betting_outcome", "outcome", "method", "round"]
-DROP_COLUMNS = [
-    "fighter1_dob",
-    "fighter2_dob",
-    "event_name",
-    "weight_class",
-    "favourite",
-    "underdog",
-    "events_extract_ts",
-    "odds_extract_ts",
-    "fighter_extract_ts",
-]
 
 
 def load_dataset() -> pd.DataFrame:
-    """Load and preprocess the dataset to match model training."""
+    """Load the historical dataset with raw fighter statistics."""
 
-    df = pd.read_csv(
+    return pd.read_csv(
         DATA_PATH,
         parse_dates=["event_date", "fighter1_dob", "fighter2_dob"],
     )
-    df["fighter1_age"] = (df["event_date"] - df["fighter1_dob"]).dt.days / 365.25
-    df["fighter2_age"] = (df["event_date"] - df["fighter2_dob"]).dt.days / 365.25
-    df["event_date"] = df["event_date"].map(pd.Timestamp.toordinal)
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    df = df.drop(columns=DROP_COLUMNS)
-    return df
+
+
+def _recent_stats(
+    df: pd.DataFrame, fighter: str, event_dt: pd.Timestamp, prefix: str
+) -> dict:
+    """Return the fighter's stats from their most recent fight before ``event_dt``.
+
+    Parameters
+    ----------
+    df:
+        Historical fights dataset with datetime columns.
+    fighter:
+        Name of the fighter to look up.
+    event_dt:
+        Timestamp of the upcoming event.
+    prefix:
+        Prefix to apply to the returned feature names (``"fighter1_"`` or
+        ``"fighter2_"``).
+    """
+
+    mask = (
+        ((df["fighter1"] == fighter) | (df["fighter2"] == fighter))
+        & (df["event_date"] < event_dt)
+    )
+    prior_fights = df.loc[mask]
+    if prior_fights.empty:
+        raise ValueError(f"No historical data found for {fighter} before {event_dt.date()}")
+
+    last_row = prior_fights.loc[prior_fights["event_date"].idxmax()]
+    source_prefix = "fighter1_" if last_row["fighter1"] == fighter else "fighter2_"
+    cols = [c for c in df.columns if c.startswith(source_prefix)]
+    stats = {prefix + c[len(source_prefix):]: last_row[c] for c in cols}
+
+    # Compute age at the upcoming event date
+    dob_key = prefix + "dob"
+    dob = stats.pop(dob_key)
+    stats[prefix + "age"] = (event_dt - dob).days / 365.25
+    return stats
 
 
 def build_features(fighter1: str, fighter2: str, event_date: str) -> dict:
     """Return model-ready features for the given fighters and event date."""
 
     df = load_dataset()
-    event_date_ord = pd.Timestamp(event_date).toordinal()
-    row = df[
-        (df["fighter1"] == fighter1)
-        & (df["fighter2"] == fighter2)
-        & (df["event_date"] == event_date_ord)
-    ]
-    if row.empty:
-        raise ValueError(
-            f"No data found for {fighter1} vs {fighter2} on {event_date}."
-        )
-    row = row.drop(columns=TARGET_COLUMNS)
-    return row.squeeze().to_dict()
+    event_dt = pd.Timestamp(event_date)
+
+    features: dict[str, object] = {
+        "fighter1": fighter1,
+        "fighter2": fighter2,
+        "event_date": event_dt.toordinal(),
+        # Odds may not be known for future fights; impute with NaN
+        "favourite_odds": np.nan,
+        "underdog_odds": np.nan,
+    }
+    features.update(_recent_stats(df, fighter1, event_dt, "fighter1_"))
+    features.update(_recent_stats(df, fighter2, event_dt, "fighter2_"))
+
+    # Remove any columns that are not features (e.g., target labels)
+    for col in TARGET_COLUMNS:
+        features.pop(col, None)
+    return features
 
 def main() -> None:
     changes_only = "--changes" in sys.argv
