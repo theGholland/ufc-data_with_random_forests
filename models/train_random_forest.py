@@ -1,5 +1,11 @@
 import argparse
+import sys
 from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
+from ufc.preprocessing.feature_engineering import derive_features
 
 import joblib
 import numpy as np
@@ -11,7 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
-DATA_PATH = Path(__file__).resolve().parent.parent / 'data' / 'complete_ufc_data.csv'
+DATA_PATH = ROOT_DIR / 'data' / 'complete_ufc_data.csv'
 MODEL_DIR = Path(__file__).resolve().parent
 TARGET_COLUMNS = ['betting_outcome', 'outcome', 'method', 'round']
 
@@ -27,8 +33,6 @@ def load_dataset(
     )
 
     if apply_feature_engineering:
-        from ufc.preprocessing.feature_engineering import derive_features
-
         # operate on a copy so the original data remains intact
         df = derive_features(df.copy(), random_state=random_state)
     else:
