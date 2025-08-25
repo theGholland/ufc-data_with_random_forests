@@ -33,9 +33,11 @@ def randomize_fighter_order(df: pd.DataFrame, random_state: int | None = None) -
 
     # swap fighter stats
     fighter1_cols = [c for c in df.columns if c.startswith("fighter1_")]
-    fighter2_cols = [c for c in df.columns if c.startswith("fighter2_")]
-    for c1, c2 in zip(fighter1_cols, fighter2_cols):
-        df.loc[swap_mask, [c1, c2]] = df.loc[swap_mask, [c2, c1]].values
+    # Deriving partner column names avoids mismatches if column order changes
+    for c1 in fighter1_cols:
+        c2 = c1.replace("fighter1_", "fighter2_")
+        if c2 in df.columns:
+            df.loc[swap_mask, [c1, c2]] = df.loc[swap_mask, [c2, c1]].values
 
     # swap betting odds information
     df.loc[swap_mask, ["favourite", "underdog"]] = df.loc[swap_mask, ["underdog", "favourite"]].values
