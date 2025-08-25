@@ -64,8 +64,12 @@ def derive_features(
         df = randomize_fighter_order(df, random_state=random_state)
 
     # Ensure datetime columns retain their type after any swapping operations
+    # ``pd.to_datetime`` can raise ``ValueError`` if a column contains a mix of
+    # datetime-like objects and integers (behaviour observed on older Pandas
+    # versions).  Coercing invalid or mixed values to ``NaT`` avoids this while
+    # keeping valid timestamps intact.
     for col in ["event_date", "fighter1_dob", "fighter2_dob"]:
-        df[col] = pd.to_datetime(df[col])
+        df[col] = pd.to_datetime(df[col], errors="coerce")
 
     # Compute age of each fighter at the time of the event in fractional years
     df["fighter1_age"] = (
