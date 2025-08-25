@@ -93,9 +93,16 @@ def derive_features(
     for attribute in compare_attributes:
         df[f"delta_{attribute}"] = df[f"fighter1_{attribute}"] - df[f"fighter2_{attribute}"]
 
-    # compute ratio between fighter1, fighter 2 attributes
+    # compute ratio between fighter1, fighter2 attributes safely
     for attribute in compare_attributes:
-        df[f"ratio_{attribute}"] = df[f"fighter1_{attribute}"] / df[f"fighter2_{attribute}"]
+        numerator = df[f"fighter1_{attribute}"].astype(float)
+        denominator = df[f"fighter2_{attribute}"].astype(float)
+        df[f"ratio_{attribute}"] = np.divide(
+            numerator,
+            denominator,
+            out=np.zeros_like(numerator, dtype=float),
+            where=denominator != 0,
+        )
 
     # TODO - add win/loss for last X fights
 
