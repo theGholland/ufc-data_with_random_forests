@@ -23,6 +23,21 @@ DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "complete_ufc_data
 # Columns present in the dataset that are not model features
 TARGET_COLUMNS = ["betting_outcome", "outcome", "method", "round"]
 
+# Fighter statistics to compare between opponents when deriving features
+COMPARE_ATTRIBUTES = [
+    "height",
+    "age",
+    "reach",
+    "sig_strikes_landed_pm",
+    "sig_strikes_accuracy",
+    "sig_strikes_absorbed_pm",
+    "sig_strikes_defended",
+    "takedown_avg_per15m",
+    "takedown_accuracy",
+    "takedown_defence",
+    "submission_avg_attempted_per15m",
+]
+
 
 def load_dataset() -> pd.DataFrame:
     """Load the historical dataset with raw fighter statistics."""
@@ -71,7 +86,13 @@ def _recent_stats(
     return stats
 
 
-def build_features(fighter1: str, fighter2: str, event_date: str) -> dict:
+def build_features(
+    fighter1: str,
+    fighter2: str,
+    event_date: str,
+    *,
+    include_delta_features: bool = False,
+) -> dict:
     """Return model-ready features for the given fighters and event date."""
 
     df = load_dataset()
@@ -91,6 +112,22 @@ def build_features(fighter1: str, fighter2: str, event_date: str) -> dict:
     # Remove any columns that are not features (e.g., target labels)
     for col in TARGET_COLUMNS:
         features.pop(col, None)
+
+    if include_delta_features:
+        for attr in COMPARE_ATTRIBUTES:
+            f1_key = f"fighter1_{attr}"
+            f2_key = f"fighter2_{attr}"
+            if f1_key in features and f2_key in features:
+                val1 = features[f1_key]
+                val2 = features[f2_key]
+                features[f"delta_{attr}"] = val1 - val2
+                v1 = float(val1) if pd.notna(val1) else np.nan
+                v2 = float(val2) if pd.notna(val2) else np.nan
+                ratio = 0.0
+                if np.isfinite(v1) and np.isfinite(v2) and v2 != 0:
+                    ratio = v1 / v2
+                features[f"ratio_{attr}"] = ratio
+
     return features
 
 def main() -> None:
@@ -129,7 +166,24 @@ def main() -> None:
         return
 
     pipeline = joblib.load(args.model)
-    features = build_features(args.fighter1, args.fighter2, args.event_date)
+
+    compute_deltas = False
+    preprocess = pipeline.named_steps.get("preprocess")
+    if preprocess is not None:
+        transformers = getattr(preprocess, "transformers_", preprocess.transformers)
+        for name, _trans, cols in transformers:
+            if name == "num":
+                compute_deltas = any(
+                    c.startswith("delta_") or c.startswith("ratio_") for c in cols
+                )
+                break
+
+    features = build_features(
+        args.fighter1,
+        args.fighter2,
+        args.event_date,
+        include_delta_features=compute_deltas,
+    )
     df = pd.DataFrame([features])
     prediction = pipeline.predict(df)[0]
     print(prediction)
