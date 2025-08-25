@@ -82,6 +82,7 @@ Some interesting insights and visualisations are shared here:
     * Fight win streak, finish rate (knockouts, submissions)
     * Derived features - durability, tag as wrester/striker/grappler etc.
     * Include if fighter is favourite (if have scraped odds)
+    * For outcome prediction, betting odds (`favourite_odds`, `underdog_odds`) are excluded to prevent data leakage
 * Note that MMA is a highly dynamic and unpredictable sport, frequently characterised by upsets, and that match outcome may not be consistently predictable
 
 | Process | Analysis | Finding | Notebook |

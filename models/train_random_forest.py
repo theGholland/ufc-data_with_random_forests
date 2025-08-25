@@ -24,6 +24,7 @@ TARGET_COLUMNS = ['betting_outcome', 'outcome', 'method', 'round']
 
 def load_dataset(
     *,
+    target: str,
     apply_feature_engineering: bool = False,
     random_state: int | None = None,
 ) -> pd.DataFrame:
@@ -45,19 +46,20 @@ def load_dataset(
     # Replace infinite values which can appear in the odds columns
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     # Drop unused or leakage columns
-    df = df.drop(
-        columns=[
-            'fighter1_dob',
-            'fighter2_dob',
-            'event_name',
-            'weight_class',
-            'favourite',
-            'underdog',
-            'events_extract_ts',
-            'odds_extract_ts',
-            'fighter_extract_ts',
-        ]
-    )
+    leakage_columns = [
+        'fighter1_dob',
+        'fighter2_dob',
+        'event_name',
+        'weight_class',
+        'favourite',
+        'underdog',
+        'events_extract_ts',
+        'odds_extract_ts',
+        'fighter_extract_ts',
+    ]
+    if target == "outcome":
+        leakage_columns.extend(['favourite_odds', 'underdog_odds'])
+    df = df.drop(columns=leakage_columns)
     return df
 
 def build_pipeline(
@@ -126,6 +128,7 @@ def train_and_save(
     apply_feature_engineering: bool,
 ) -> None:
     df = load_dataset(
+        target=target,
         apply_feature_engineering=apply_feature_engineering,
         random_state=random_state,
     )
@@ -169,7 +172,11 @@ def train_and_save(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Random Forest models for multiple UFC prediction targets"
+        description=(
+            "Train Random Forest models for multiple UFC prediction targets. "
+            "For outcome prediction, betting odds ('favourite_odds' and "
+            "'underdog_odds') are excluded to prevent data leakage."
+        )
     )
     parser.add_argument(
         "--n-estimators", type=int, default=50, help="Number of trees in the forest"
