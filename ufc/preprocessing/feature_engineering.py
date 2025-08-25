@@ -63,8 +63,17 @@ def derive_features(
     if randomise_fighters:
         df = randomize_fighter_order(df, random_state=random_state)
 
-    df["fighter1_age"] = df["event_date"].dt.year - df["fighter1_dob"].dt.year
-    df["fighter2_age"] = df["event_date"].dt.year - df["fighter2_dob"].dt.year
+    # Ensure datetime columns retain their type after any swapping operations
+    for col in ["event_date", "fighter1_dob", "fighter2_dob"]:
+        df[col] = pd.to_datetime(df[col])
+
+    # Compute age of each fighter at the time of the event in fractional years
+    df["fighter1_age"] = (
+        df["event_date"] - df["fighter1_dob"]
+    ).dt.days / 365.25
+    df["fighter2_age"] = (
+        df["event_date"] - df["fighter2_dob"]
+    ).dt.days / 365.25
 
     compare_attributes = [
         'height',
