@@ -144,7 +144,7 @@ def train_and_save(
 
     stratify = y if y.value_counts().min() >= 2 else None
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=stratify
+        X, y, test_size=0.2, random_state=random_state, stratify=stratify
     )
 
     pipeline = build_pipeline(
@@ -190,7 +190,10 @@ def parse_args():
         help="Minimum number of samples required to be at a leaf node",
     )
     parser.add_argument(
-        "--random-state", type=int, default=42, help="Random seed for reproducibility"
+        "--random-state",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility of data splitting and model",
     )
     parser.add_argument(
         "--feature-engineering",
